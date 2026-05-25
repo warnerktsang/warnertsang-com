@@ -1,11 +1,230 @@
 ---
-import Welcome from '../components/Welcome.astro';
+import { getCollection } from 'astro:content';
 import Layout from '../layouts/Layout.astro';
 
-// Welcome to Astro! Wondering what to do next? Check out the Astro documentation at https://docs.astro.build
-// Don't want to use any of this? Delete everything in this file, the `assets`, `components`, and `layouts` directories, and start fresh.
+const projects = (await getCollection('projects')).sort((a, b) =>
+	a.data.title.localeCompare(b.data.title),
+);
+
+const statusLabels = {
+	live: 'Live',
+	building: 'Building',
+	paused: 'Paused',
+	archived: 'Archived',
+};
 ---
 
-<Layout>
-	<Welcome />
+<Layout title="Warner Tsang">
+	<main class="page-shell">
+		<header class="site-header">
+			<a class="site-name" href="/" aria-label="Warner Tsang home">Warner Tsang</a>
+		</header>
+
+		<section class="project-section" aria-labelledby="projects-heading">
+			<div class="section-heading">
+				<h1 id="projects-heading">Projects</h1>
+				<p>{projects.length} indexed</p>
+			</div>
+
+			<div class="project-grid">
+				{
+					projects.map((project) => (
+						<article class="project-card">
+							<div class="card-heading">
+								<h2>{project.data.title}</h2>
+								<span class={`status status-${project.data.status}`}>
+									{statusLabels[project.data.status]}
+								</span>
+							</div>
+
+							<p class="description">{project.data.description}</p>
+
+							<ul class="tag-list" aria-label={`${project.data.title} tags`}>
+								{project.data.tags.map((tag) => (
+									<li>{tag}</li>
+								))}
+							</ul>
+
+							<div class="card-links" aria-label={`${project.data.title} links`}>
+								<a href={project.data.liveUrl}>Live</a>
+								<a href={project.data.repoUrl}>Repo</a>
+							</div>
+						</article>
+					))
+				}
+			</div>
+		</section>
+	</main>
 </Layout>
+
+<style>
+	.page-shell {
+		width: min(1120px, calc(100% - 32px));
+		margin: 0 auto;
+		padding: 32px 0 56px;
+	}
+
+	.site-header {
+		display: flex;
+		align-items: center;
+		justify-content: space-between;
+		padding: 6px 0 64px;
+	}
+
+	.site-name {
+		font-size: 15px;
+		font-weight: 650;
+		text-decoration: none;
+	}
+
+	.project-section {
+		display: grid;
+		gap: 22px;
+	}
+
+	.section-heading {
+		display: flex;
+		align-items: end;
+		justify-content: space-between;
+		gap: 16px;
+		border-bottom: 1px solid #d9d6cd;
+		padding-bottom: 14px;
+	}
+
+	h1,
+	h2,
+	p {
+		margin: 0;
+	}
+
+	h1 {
+		font-size: clamp(38px, 7vw, 82px);
+		line-height: 0.95;
+		font-weight: 720;
+		letter-spacing: 0;
+	}
+
+	.section-heading p {
+		color: #666156;
+		font-size: 14px;
+		white-space: nowrap;
+	}
+
+	.project-grid {
+		display: grid;
+		grid-template-columns: repeat(auto-fit, minmax(min(100%, 280px), 1fr));
+		gap: 14px;
+	}
+
+	.project-card {
+		display: grid;
+		min-height: 260px;
+		grid-template-rows: auto 1fr auto auto;
+		gap: 20px;
+		border: 1px solid #d9d6cd;
+		border-radius: 8px;
+		background: #fffdfa;
+		padding: 20px;
+	}
+
+	.card-heading {
+		display: flex;
+		align-items: start;
+		justify-content: space-between;
+		gap: 14px;
+	}
+
+	h2 {
+		font-size: 20px;
+		line-height: 1.15;
+		font-weight: 680;
+	}
+
+	.status {
+		flex: 0 0 auto;
+		border: 1px solid #c7c2b8;
+		border-radius: 999px;
+		padding: 4px 8px;
+		color: #3f3b34;
+		font-size: 12px;
+		line-height: 1;
+	}
+
+	.status-live {
+		border-color: #7b9a73;
+		color: #2f5f2a;
+	}
+
+	.status-building {
+		border-color: #b99b56;
+		color: #765d20;
+	}
+
+	.status-paused,
+	.status-archived {
+		color: #666156;
+	}
+
+	.description {
+		color: #4c4740;
+		font-size: 15px;
+		line-height: 1.55;
+	}
+
+	.tag-list {
+		display: flex;
+		flex-wrap: wrap;
+		gap: 8px;
+		margin: 0;
+		padding: 0;
+		list-style: none;
+	}
+
+	.tag-list li {
+		border-radius: 999px;
+		background: #efebe2;
+		padding: 5px 8px;
+		color: #504a42;
+		font-size: 12px;
+		line-height: 1;
+	}
+
+	.card-links {
+		display: flex;
+		gap: 12px;
+		padding-top: 2px;
+	}
+
+	.card-links a {
+		color: #171717;
+		font-size: 14px;
+		font-weight: 620;
+		text-decoration-thickness: 1px;
+		text-underline-offset: 4px;
+	}
+
+	.card-links a:hover {
+		color: #6f6248;
+	}
+
+	@media (max-width: 640px) {
+		.page-shell {
+			width: min(100% - 24px, 1120px);
+			padding-top: 22px;
+		}
+
+		.site-header {
+			padding-bottom: 44px;
+		}
+
+		.section-heading {
+			align-items: start;
+			flex-direction: column;
+		}
+
+		.project-card {
+			min-height: 240px;
+			padding: 18px;
+		}
+	}
+</style>
