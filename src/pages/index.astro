@@ -1,17 +1,5 @@
 ---
-import { getCollection } from 'astro:content';
 import Layout from '../layouts/Layout.astro';
-
-const projects = (await getCollection('projects')).sort((a, b) =>
-	a.data.title.localeCompare(b.data.title),
-);
-
-const statusLabels = {
-	live: 'Live',
-	building: 'Building',
-	paused: 'Paused',
-	archived: 'Archived',
-};
 ---
 
 <Layout title="Warner Tsang">
@@ -23,35 +11,7 @@ const statusLabels = {
 		<section class="project-section" aria-labelledby="projects-heading">
 			<div class="section-heading">
 				<h1 id="projects-heading">Projects</h1>
-				<p>{projects.length} indexed</p>
-			</div>
-
-			<div class="project-grid">
-				{
-					projects.map((project) => (
-						<article class="project-card">
-							<div class="card-heading">
-								<h2>{project.data.title}</h2>
-								<span class={`status status-${project.data.status}`}>
-									{statusLabels[project.data.status]}
-								</span>
-							</div>
-
-							<p class="description">{project.data.description}</p>
-
-							<ul class="tag-list" aria-label={`${project.data.title} tags`}>
-								{project.data.tags.map((tag) => (
-									<li>{tag}</li>
-								))}
-							</ul>
-
-							<div class="card-links" aria-label={`${project.data.title} links`}>
-								<a href={project.data.liveUrl}>Live</a>
-								<a href={project.data.repoUrl}>Repo</a>
-							</div>
-						</article>
-					))
-				}
+				<p>coming soon</p>
 			</div>
 		</section>
 	</main>
@@ -110,103 +70,6 @@ const statusLabels = {
 		white-space: nowrap;
 	}
 
-	.project-grid {
-		display: grid;
-		grid-template-columns: repeat(auto-fit, minmax(min(100%, 280px), 1fr));
-		gap: 14px;
-	}
-
-	.project-card {
-		display: grid;
-		min-height: 260px;
-		grid-template-rows: auto 1fr auto auto;
-		gap: 20px;
-		border: 1px solid #d9d6cd;
-		border-radius: 8px;
-		background: #fffdfa;
-		padding: 20px;
-	}
-
-	.card-heading {
-		display: flex;
-		align-items: start;
-		justify-content: space-between;
-		gap: 14px;
-	}
-
-	h2 {
-		font-size: 20px;
-		line-height: 1.15;
-		font-weight: 680;
-	}
-
-	.status {
-		flex: 0 0 auto;
-		border: 1px solid #c7c2b8;
-		border-radius: 999px;
-		padding: 4px 8px;
-		color: #3f3b34;
-		font-size: 12px;
-		line-height: 1;
-	}
-
-	.status-live {
-		border-color: #7b9a73;
-		color: #2f5f2a;
-	}
-
-	.status-building {
-		border-color: #b99b56;
-		color: #765d20;
-	}
-
-	.status-paused,
-	.status-archived {
-		color: #666156;
-	}
-
-	.description {
-		color: #4c4740;
-		font-size: 15px;
-		line-height: 1.55;
-	}
-
-	.tag-list {
-		display: flex;
-		flex-wrap: wrap;
-		gap: 8px;
-		margin: 0;
-		padding: 0;
-		list-style: none;
-	}
-
-	.tag-list li {
-		border-radius: 999px;
-		background: #efebe2;
-		padding: 5px 8px;
-		color: #504a42;
-		font-size: 12px;
-		line-height: 1;
-	}
-
-	.card-links {
-		display: flex;
-		gap: 12px;
-		padding-top: 2px;
-	}
-
-	.card-links a {
-		color: #171717;
-		font-size: 14px;
-		font-weight: 620;
-		text-decoration-thickness: 1px;
-		text-underline-offset: 4px;
-	}
-
-	.card-links a:hover {
-		color: #6f6248;
-	}
-
 	@media (max-width: 640px) {
 		.page-shell {
 			width: min(100% - 24px, 1120px);
@@ -220,11 +83,6 @@ const statusLabels = {
 		.section-heading {
 			align-items: start;
 			flex-direction: column;
-		}
-
-		.project-card {
-			min-height: 240px;
-			padding: 18px;
 		}
 	}
 </style>
