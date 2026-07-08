@@ -23,8 +23,9 @@ export async function POST(req: Request) {
   const body = (await req.json()) as {
     messages?: UIMessage[];
     threadId?: string;
+    timeZone?: string;
   };
-  const { messages, threadId } = body;
+  const { messages, threadId, timeZone } = body;
   if (!threadId || !Array.isArray(messages)) {
     return new Response("Bad Request", { status: 400 });
   }
@@ -50,7 +51,7 @@ export async function POST(req: Request) {
 
   const result = streamText({
     model: getAgentModel(),
-    system: buildSystemPrompt(),
+    system: buildSystemPrompt(new Date(), timeZone),
     messages: await convertToModelMessages(messages),
     tools: buildAgentTools(ctx),
     // Allow the model to call a tool then respond with the result.

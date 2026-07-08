@@ -36,7 +36,41 @@ export function buildAgentTools(ctx: ToolContext): ToolSet {
   return tools;
 }
 
-export function buildSystemPrompt(now: Date = new Date()): string {
+/**
+ * Returns the user's current-local-day info for a given IANA timezone, so the
+ * model resolves "today"/"tomorrow" against the user's local calendar day
+ * rather than UTC. Falls back to UTC when the timezone is missing/invalid.
+ */
+function localTimeContext(now: Date, timeZone?: string): string {
+  if (timeZone) {
+    try {
+      const local = new Intl.DateTimeFormat("en-US", {
+        timeZone,
+        dateStyle: "full",
+        timeStyle: "long",
+      }).format(now);
+      const gmt =
+        new Intl.DateTimeFormat("en-US", { timeZone, timeZoneName: "longOffset" })
+          .formatToParts(now)
+          .find((p) => p.type === "timeZoneName")?.value ?? "GMT";
+      // "GMT-04:00" -> "-04:00"; bare "GMT" (UTC) -> "+00:00".
+      const offset = gmt === "GMT" ? "+00:00" : gmt.replace("GMT", "");
+      return [
+        `The user's timezone is ${timeZone} (UTC offset ${offset}).`,
+        `The current local date and time for the user is ${local}.`,
+        `Resolve relative dates like "today", "tomorrow", or "next week" against the user's LOCAL date. When calling google_calendar__read_events, pass start/end as ISO 8601 timestamps that include the user's UTC offset (e.g. a full local day is 2026-07-08T00:00:00${offset} to 2026-07-09T00:00:00${offset}).`,
+      ].join(" ");
+    } catch {
+      // Invalid timezone identifier — fall through to UTC.
+    }
+  }
+  return `The current date and time is ${now.toISOString()} (UTC). Resolve relative dates like "tomorrow" or "next week" against this.`;
+}
+
+export function buildSystemPrompt(
+  now: Date = new Date(),
+  timeZone?: string,
+): string {
   const connectorLines = registry
     .all()
     .map(
@@ -49,7 +83,7 @@ export function buildSystemPrompt(now: Date = new Date()): string {
 
   return [
     "You are a private, read-only personal assistant for a single user.",
-    `The current date and time is ${now.toISOString()} (UTC). Resolve relative dates like "tomorrow" or "next week" against this.`,
+    localTimeContext(now, timeZone),
     "",
     "Available connectors:",
     connectorLines,

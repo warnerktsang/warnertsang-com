@@ -48,7 +48,8 @@ export function ChatShell({
     if (!trimmed || busy) return;
     setInput("");
     const id = await ensureThreadId();
-    await sendMessage({ text: trimmed }, { body: { threadId: id } });
+    const timeZone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+    await sendMessage({ text: trimmed }, { body: { threadId: id, timeZone } });
   }
 
   return (
