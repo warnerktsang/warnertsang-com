@@ -5,9 +5,12 @@ import { tokenStore } from "@/connectors/token-store";
 export const GOOGLE_PROVIDER = "google";
 export const CALENDAR_READONLY_SCOPE =
   "https://www.googleapis.com/auth/calendar.readonly";
+export const GMAIL_READONLY_SCOPE =
+  "https://www.googleapis.com/auth/gmail.readonly";
 
 const GOOGLE_TOKEN_URL = "https://oauth2.googleapis.com/token";
 const CALENDAR_API = "https://www.googleapis.com/calendar/v3";
+const GMAIL_API = "https://gmail.googleapis.com/gmail/v1";
 
 interface RefreshResponse {
   access_token: string;
@@ -37,19 +40,14 @@ async function refreshGoogleToken(refreshToken: string): Promise<RefreshResponse
 
 /**
  * Returns a valid Google access token for the user, refreshing if expired.
- * Fails closed: throws a user-facing message if the account isn't connected or
- * the read-only calendar scope was not granted.
+ * Fails closed: throws a user-facing message if the account isn't connected.
+ * Scope validation is handled per-connector via ConnectorRegistry.
  */
 export async function getGoogleAccessToken(userId: string): Promise<string> {
   const token = await tokenStore.get(userId, GOOGLE_PROVIDER);
   if (!token || !token.accessToken) {
     throw new Error(
-      "Google account is not connected. Sign in with Google to grant calendar access.",
-    );
-  }
-  if (token.scope && !token.scope.includes(CALENDAR_READONLY_SCOPE)) {
-    throw new Error(
-      "Read-only calendar permission was not granted. Reconnect Google and allow calendar access.",
+      "Google account is not connected. Sign in with Google to grant access.",
     );
   }
 
@@ -101,6 +99,176 @@ interface GoogleEvent {
 interface GoogleEventsResponse {
   items?: GoogleEvent[];
 }
+
+// ---------------------------------------------------------------------------
+// Gmail API
+// ---------------------------------------------------------------------------
+
+export interface GmailMessage {
+  id: string;
+  threadId: string;
+  subject: string | null;
+  from: string | null;
+  to: string | null;
+  date: string | null;
+  snippet: string;
+  body: string | null;
+}
+
+interface GmailHeader {
+  name: string;
+  value: string;
+}
+
+interface GmailPart {
+  mimeType?: string;
+  body?: { data?: string };
+  parts?: GmailPart[];
+}
+
+interface GmailPayload {
+  headers?: GmailHeader[];
+  mimeType?: string;
+  body?: { data?: string };
+  parts?: GmailPart[];
+}
+
+interface GmailMessageRaw {
+  id: string;
+  threadId: string;
+  snippet?: string;
+  payload?: GmailPayload;
+}
+
+interface GmailListResponse {
+  messages?: { id: string; threadId: string }[];
+  resultSizeEstimate?: number;
+}
+
+function header(payload: GmailPayload | undefined, name: string): string | null {
+  return (
+    payload?.headers?.find((h) => h.name.toLowerCase() === name.toLowerCase())
+      ?.value ?? null
+  );
+}
+
+const BODY_MAX_CHARS = 8_000;
+
+function decodeBase64Url(data: string): string {
+  const base64 = data.replace(/-/g, "+").replace(/_/g, "/");
+  const decoded = Buffer.from(base64, "base64").toString("utf-8");
+  return decoded.length > BODY_MAX_CHARS
+    ? decoded.slice(0, BODY_MAX_CHARS) + "\n[truncated]"
+    : decoded;
+}
+
+function extractBody(part: GmailPart | GmailPayload | undefined): string | null {
+  if (!part) return null;
+  if (part.mimeType === "text/plain" && part.body?.data) {
+    return decodeBase64Url(part.body.data);
+  }
+  if (part.parts) {
+    for (const sub of part.parts) {
+      const found = extractBody(sub);
+      if (found) return found;
+    }
+  }
+  return null;
+}
+
+export interface SearchMessagesParams {
+  accessToken: string;
+  query: string;
+  maxResults?: number;
+}
+
+/**
+ * Searches Gmail messages using a Gmail search query string (e.g. "from:alice
+ * subject:invoice after:2026/01/01"). Returns lightweight message metadata
+ * with a snippet; use getGmailMessage for full body. Read-only.
+ */
+export async function searchGmailMessages(
+  params: SearchMessagesParams,
+): Promise<GmailMessage[]> {
+  const { accessToken, query, maxResults = 20 } = params;
+
+  const listUrl = new URL(`${GMAIL_API}/users/me/messages`);
+  listUrl.searchParams.set("q", query);
+  listUrl.searchParams.set("maxResults", String(maxResults));
+
+  const listRes = await fetch(listUrl, {
+    headers: { Authorization: `Bearer ${accessToken}` },
+  });
+  if (!listRes.ok) {
+    if (listRes.status === 401 || listRes.status === 403) {
+      throw new Error(
+        "Google denied the Gmail request (permission or session issue). Try signing in again.",
+      );
+    }
+    throw new Error(`Gmail API error (${listRes.status}).`);
+  }
+
+  const listData = (await listRes.json()) as GmailListResponse;
+  const ids = listData.messages ?? [];
+  if (ids.length === 0) return [];
+
+  const results = await Promise.allSettled(
+    ids.map((m) => getGmailMessage({ accessToken, id: m.id })),
+  );
+  return results
+    .filter(
+      (r): r is PromiseFulfilledResult<GmailMessage> =>
+        r.status === "fulfilled" && r.value !== null,
+    )
+    .map((r) => r.value);
+}
+
+export interface GetMessageParams {
+  accessToken: string;
+  id: string;
+}
+
+/**
+ * Fetches a single Gmail message by ID including its decoded plain-text body.
+ * Read-only.
+ */
+export async function getGmailMessage(
+  params: GetMessageParams,
+): Promise<GmailMessage | null> {
+  const { accessToken, id } = params;
+
+  const url = new URL(`${GMAIL_API}/users/me/messages/${encodeURIComponent(id)}`);
+  url.searchParams.set("format", "full");
+
+  const res = await fetch(url, {
+    headers: { Authorization: `Bearer ${accessToken}` },
+  });
+  if (!res.ok) {
+    if (res.status === 404) return null;
+    if (res.status === 401 || res.status === 403) {
+      throw new Error(
+        "Google denied the Gmail request (permission or session issue). Try signing in again.",
+      );
+    }
+    throw new Error(`Gmail API error fetching message ${id} (${res.status}).`);
+  }
+
+  const raw = (await res.json()) as GmailMessageRaw;
+  return {
+    id: raw.id,
+    threadId: raw.threadId,
+    subject: header(raw.payload, "subject"),
+    from: header(raw.payload, "from"),
+    to: header(raw.payload, "to"),
+    date: header(raw.payload, "date"),
+    snippet: raw.snippet ?? "",
+    body: extractBody(raw.payload) ?? null,
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Calendar API
+// ---------------------------------------------------------------------------
 
 export interface ListEventsParams {
   accessToken: string;

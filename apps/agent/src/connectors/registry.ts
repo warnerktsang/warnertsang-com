@@ -1,6 +1,7 @@
 import type { Connector, ConnectorTool } from "@/connectors/types";
 import { qualifiedToolName } from "@/connectors/types";
 import { googleCalendarConnector } from "@/connectors/google/calendar";
+import { googleGmailConnector } from "@/connectors/google/gmail";
 
 export interface RegisteredTool {
   connector: Connector;
@@ -53,5 +54,6 @@ export class ConnectorRegistry {
 
 export const registry = new ConnectorRegistry();
 
-// --- Register connectors here (only google_calendar in Phase 1) ---
+// --- Register connectors here ---
 registry.register(googleCalendarConnector);
+registry.register(googleGmailConnector);
