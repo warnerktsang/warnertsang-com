@@ -1,0 +1,139 @@
+// Personal Agent OS — Phase 1 schema.
+// Intentionally simple but extensible: future connectors and agent runtimes
+// reuse the same users / threads / tool_calls / audit_events tables.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id        String   @id @default(cuid())
+  email     String   @unique
+  name      String?
+  image     String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  oauthAccounts OAuthAccount[]
+  threads       ChatThread[]
+  toolCalls     ToolCall[]
+  auditEvents   AuditEvent[]
+
+  @@map("users")
+}
+
+// OAuth account linkage + token storage.
+// NOTE (Phase 2): access/refresh tokens are stored in plaintext for the MVP.
+// All reads/writes go through the TokenStore abstraction so this can be swapped
+// for an encrypted store (e.g. KMS envelope encryption) without touching callers.
+model OAuthAccount {
+  id                String   @id @default(cuid())
+  userId            String
+  provider          String
+  providerAccountId String
+  accessToken       String?
+  refreshToken      String?
+  expiresAt         Int? // epoch seconds
+  tokenType         String?
+  scope             String?
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+  @@unique([userId, provider])
+  @@index([userId])
+  @@map("oauth_accounts")
+}
+
+// Declarative record of connectors known to the platform. Seeded from the
+// in-code ConnectorRegistry; runtime "connected" state is derived from the
+// user's OAuth scopes.
+model Connector {
+  id          String   @id @default(cuid())
+  name        String   @unique
+  displayName String
+  description String
+  provider    String
+  scopes      String[]
+  status      String   @default("available")
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@map("connectors")
+}
+
+model ChatThread {
+  id        String   @id @default(cuid())
+  userId    String
+  title     String   @default("New chat")
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user     User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  messages ChatMessage[]
+
+  @@index([userId])
+  @@map("chat_threads")
+}
+
+model ChatMessage {
+  id        String   @id @default(cuid())
+  threadId  String
+  role      String // user | assistant | system
+  content   String // flattened text for quick rendering / search
+  parts     Json? // full UIMessage parts (tool calls, etc.) for fidelity
+  createdAt DateTime @default(now())
+
+  thread ChatThread @relation(fields: [threadId], references: [id], onDelete: Cascade)
+
+  @@index([threadId])
+  @@map("chat_messages")
+}
+
+// One row per tool invocation attempt (running -> success | error).
+model ToolCall {
+  id          String    @id @default(cuid())
+  userId      String
+  threadId    String?
+  connector   String
+  tool        String
+  status      String // running | success | error
+  input       Json?
+  output      Json?
+  error       String?
+  durationMs  Int?
+  createdAt   DateTime  @default(now())
+  completedAt DateTime?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([createdAt])
+  @@map("tool_calls")
+}
+
+// Append-only audit trail. Never store tokens/secrets in `metadata`.
+model AuditEvent {
+  id        String   @id @default(cuid())
+  userId    String?
+  type      String // login | login_denied | connector_access | tool_execution | error
+  action    String
+  connector String?
+  tool      String?
+  success   Boolean  @default(true)
+  metadata  Json?
+  createdAt DateTime @default(now())
+
+  user User? @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([userId])
+  @@index([createdAt])
+  @@map("audit_events")
+}
