@@ -39,8 +39,8 @@ export default async function LoginPage({
         </form>
 
         <p className="mt-4 text-xs text-black/40 dark:text-white/40">
-          Read-only access to Google Calendar. No write permissions are
-          requested.
+          Read-only access to Google Calendar and Gmail. No write
+          permissions are requested.
         </p>
       </div>
     </main>

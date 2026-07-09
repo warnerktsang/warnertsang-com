@@ -7,6 +7,7 @@ import { recordAudit } from "@/lib/audit";
 import { tokenStore } from "@/connectors/token-store";
 import {
   CALENDAR_READONLY_SCOPE,
+  GMAIL_READONLY_SCOPE,
   GOOGLE_PROVIDER,
 } from "@/connectors/google/client";
 
@@ -15,6 +16,7 @@ const GOOGLE_SCOPES = [
   "email",
   "profile",
   CALENDAR_READONLY_SCOPE,
+  GMAIL_READONLY_SCOPE,
 ].join(" ");
 
 function isAllowedEmail(email?: string | null): boolean {
@@ -98,7 +100,7 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         await recordAudit({
           userId: dbUser.id,
           type: "connector_access",
-          action: "Linked google_calendar connector",
+          action: "Linked Google connectors",
           connector: "google_calendar",
           success: true,
           metadata: { scopeGranted: Boolean(account.scope) },
