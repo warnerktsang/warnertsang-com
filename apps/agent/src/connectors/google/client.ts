@@ -40,14 +40,14 @@ async function refreshGoogleToken(refreshToken: string): Promise<RefreshResponse
 
 /**
  * Returns a valid Google access token for the user, refreshing if expired.
- * Fails closed: throws a user-facing message if the account isn't connected or
- * the read-only calendar scope was not granted.
+ * Fails closed: throws a user-facing message if the account isn't connected.
+ * Scope validation is handled per-connector via ConnectorRegistry.
  */
 export async function getGoogleAccessToken(userId: string): Promise<string> {
   const token = await tokenStore.get(userId, GOOGLE_PROVIDER);
   if (!token || !token.accessToken) {
     throw new Error(
-      "Google account is not connected. Sign in with Google to grant calendar access.",
+      "Google account is not connected. Sign in with Google to grant access.",
     );
   }
 
@@ -152,9 +152,14 @@ function header(payload: GmailPayload | undefined, name: string): string | null 
   );
 }
 
+const BODY_MAX_CHARS = 8_000;
+
 function decodeBase64Url(data: string): string {
   const base64 = data.replace(/-/g, "+").replace(/_/g, "/");
-  return Buffer.from(base64, "base64").toString("utf-8");
+  const decoded = Buffer.from(base64, "base64").toString("utf-8");
+  return decoded.length > BODY_MAX_CHARS
+    ? decoded.slice(0, BODY_MAX_CHARS) + "\n[truncated]"
+    : decoded;
 }
 
 function extractBody(part: GmailPart | GmailPayload | undefined): string | null {
@@ -207,10 +212,15 @@ export async function searchGmailMessages(
   const ids = listData.messages ?? [];
   if (ids.length === 0) return [];
 
-  const messages = await Promise.all(
+  const results = await Promise.allSettled(
     ids.map((m) => getGmailMessage({ accessToken, id: m.id })),
   );
-  return messages.filter((m): m is GmailMessage => m !== null);
+  return results
+    .filter(
+      (r): r is PromiseFulfilledResult<GmailMessage> =>
+        r.status === "fulfilled" && r.value !== null,
+    )
+    .map((r) => r.value);
 }
 
 export interface GetMessageParams {
