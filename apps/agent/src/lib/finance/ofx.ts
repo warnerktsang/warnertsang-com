@@ -1,10 +1,11 @@
 import { parseStrict as parseOfx } from "ofx-js";
 import {
-  type WealthfrontAccount,
-  type WealthfrontHolding,
-  type WealthfrontImportSummary,
-  type WealthfrontTransaction,
-} from "@/lib/wealthfront/types";
+  type FinanceAccount,
+  type FinanceHolding,
+  type FinanceImportSummary,
+  type FinanceSource,
+  type FinanceTransaction,
+} from "@/lib/finance/types";
 
 type MaybeArray<T> = T | T[] | undefined;
 
@@ -133,10 +134,7 @@ function normalizeDate(value: string | undefined): string | null {
   if (!value) return null;
   const digits = value.replace(/[^0-9]/g, "");
   if (digits.length < 8) return null;
-  const year = digits.slice(0, 4);
-  const month = digits.slice(4, 6);
-  const day = digits.slice(6, 8);
-  return `${year}-${month}-${day}`;
+  return `${digits.slice(0, 4)}-${digits.slice(4, 6)}-${digits.slice(6, 8)}`;
 }
 
 function pickSymbol(transaction: OfxTransaction, fallback: string | null): string | null {
@@ -149,7 +147,7 @@ function pickSymbol(transaction: OfxTransaction, fallback: string | null): strin
   return uniq ?? fallback;
 }
 
-function normalizeTransaction(transaction: OfxTransaction): WealthfrontTransaction {
+function normalizeTransaction(transaction: OfxTransaction): FinanceTransaction {
   return {
     fitId: transaction.FITID ?? "",
     type: transaction.TRNTYPE ?? "UNKNOWN",
@@ -164,7 +162,7 @@ function normalizeTransaction(transaction: OfxTransaction): WealthfrontTransacti
   };
 }
 
-function normalizeHolding(position: InvestmentPosition): WealthfrontHolding {
+function normalizeHolding(position: InvestmentPosition): FinanceHolding {
   return {
     symbol:
       position.SECID?.UNIQID ??
@@ -180,12 +178,12 @@ function normalizeHolding(position: InvestmentPosition): WealthfrontHolding {
   };
 }
 
-function buildBankAccount(statement: BankStatement): WealthfrontAccount | null {
+function buildBankAccount(source: FinanceSource, statement: BankStatement): FinanceAccount | null {
   const accountId = statement.BANKACCTFROM?.ACCTID;
   if (!accountId) return null;
   const transactions = toArray(statement.BANKTRANLIST?.STMTTRN).map(normalizeTransaction);
   return {
-    source: "bank",
+    source,
     accountId,
     accountName: statement.BANKACCTFROM?.ACCTTYPE ?? null,
     institutionId: statement.BANKACCTFROM?.BANKID ?? null,
@@ -197,12 +195,12 @@ function buildBankAccount(statement: BankStatement): WealthfrontAccount | null {
   };
 }
 
-function buildCreditCardAccount(statement: CreditCardStatement): WealthfrontAccount | null {
+function buildCreditCardAccount(source: FinanceSource, statement: CreditCardStatement): FinanceAccount | null {
   const accountId = statement.CCACCTFROM?.ACCTID;
   if (!accountId) return null;
   const transactions = toArray(statement.BANKTRANLIST?.STMTTRN).map(normalizeTransaction);
   return {
-    source: "credit_card",
+    source,
     accountId,
     accountName: statement.CCACCTFROM?.ACCTTYPE ?? null,
     institutionId: null,
@@ -214,21 +212,16 @@ function buildCreditCardAccount(statement: CreditCardStatement): WealthfrontAcco
   };
 }
 
-function buildInvestmentAccount(statement: InvestmentStatement): WealthfrontAccount | null {
+function buildInvestmentAccount(source: FinanceSource, statement: InvestmentStatement): FinanceAccount | null {
   const accountId = statement.INVACCTFROM?.ACCTID;
   if (!accountId) return null;
   const transactions = toArray(statement.INVTRANLIST?.STMTTRN).map(normalizeTransaction);
   const holdings = toArray(statement.INVPOSLIST?.INVPOS).map(normalizeHolding);
-  const availableCash =
-    toNumber(statement.INVBAL?.AVAILCASH) ??
-    toNumber(statement.INVBAL?.BUYPOWER) ??
-    null;
+  const availableCash = toNumber(statement.INVBAL?.AVAILCASH) ?? toNumber(statement.INVBAL?.BUYPOWER) ?? null;
   const balance =
-    toNumber(statement.INVBAL?.MARGINBALANCE) ??
-    toNumber(statement.INVBAL?.SHORTBALANCE) ??
-    availableCash;
+    toNumber(statement.INVBAL?.MARGINBALANCE) ?? toNumber(statement.INVBAL?.SHORTBALANCE) ?? availableCash;
   return {
-    source: "investment",
+    source,
     accountId,
     accountName: statement.INVACCTFROM?.BROKERID ?? null,
     institutionId: statement.INVACCTFROM?.BROKERID ?? null,
@@ -240,22 +233,22 @@ function buildInvestmentAccount(statement: InvestmentStatement): WealthfrontAcco
   };
 }
 
-export function parseWealthfrontQfx(content: string): WealthfrontImportSummary {
+export function parseOfxStatement(content: string, source: FinanceSource): FinanceImportSummary {
   const parsed = parseOfx(content) as unknown as ParsedOfx;
-  const accounts: WealthfrontAccount[] = [];
+  const accounts: FinanceAccount[] = [];
 
   for (const response of toArray(parsed.OFX?.BANKMSGSRSV1?.STMTTRNRS)) {
-    const account = response.STMTRS ? buildBankAccount(response.STMTRS) : null;
+    const account = response.STMTRS ? buildBankAccount(source, response.STMTRS) : null;
     if (account) accounts.push(account);
   }
 
   for (const response of toArray(parsed.OFX?.CREDITCARDMSGSRSV1?.CCSTMTTRNRS)) {
-    const account = response.CCSTMTRS ? buildCreditCardAccount(response.CCSTMTRS) : null;
+    const account = response.CCSTMTRS ? buildCreditCardAccount(source, response.CCSTMTRS) : null;
     if (account) accounts.push(account);
   }
 
   for (const response of toArray(parsed.OFX?.INVSTMTMSGSRSV1?.INVSTMTTRNRS)) {
-    const account = response.INVSTMTRS ? buildInvestmentAccount(response.INVSTMTRS) : null;
+    const account = response.INVSTMTRS ? buildInvestmentAccount(source, response.INVSTMTRS) : null;
     if (account) accounts.push(account);
   }
 
@@ -270,7 +263,7 @@ export function parseWealthfrontQfx(content: string): WealthfrontImportSummary {
   );
 
   return {
-    source: "wealthfront",
+    source,
     accounts,
     totals,
   };

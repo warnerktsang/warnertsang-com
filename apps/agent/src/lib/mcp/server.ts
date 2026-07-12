@@ -7,9 +7,10 @@ import {
   MCP_TOOL_GET_STATUS,
 } from "@/lib/mcp/constants";
 import {
-  importWealthfrontQfx,
-  wealthfrontImportSchema,
-} from "@/lib/mcp/wealthfront";
+  financeImportSchema,
+  importFinanceStatement,
+} from "@/lib/mcp/finance";
+import { listFinanceProviders } from "@/lib/finance/providers";
 import { getAgentStatus } from "@/lib/mcp/status";
 import { logMcpEvent } from "@/lib/mcp/log";
 
@@ -53,16 +54,16 @@ export function createAgentOsMcpHandler() {
     );
 
     server.registerTool(
-      "wealthfront.import_qfx",
+      "finance.import_statement",
       {
-        description: "Parse a Wealthfront Quicken export into normalized finance data.",
-        inputSchema: wealthfrontImportSchema,
+        description: "Normalize a read-only finance statement into provider-agnostic data.",
+        inputSchema: financeImportSchema,
       },
       async (input) => {
-        const parsed = await importWealthfrontQfx(input);
+        const parsed = await importFinanceStatement(input);
         logMcpEvent({
           event: "tool",
-          tool: "wealthfront.import_qfx",
+          tool: "finance.import_statement",
           clientId: authInfo?.clientId ?? null,
           status: 200,
         });
@@ -73,6 +74,35 @@ export function createAgentOsMcpHandler() {
               text: JSON.stringify(parsed),
             },
           ],
+        };
+      },
+    );
+
+    server.registerTool(
+      "finance.list_providers",
+      {
+        description: "List the supported finance providers and capabilities.",
+        inputSchema: emptyInput,
+      },
+      async () => {
+        const providers = listFinanceProviders();
+        logMcpEvent({
+          event: "tool",
+          tool: "finance.list_providers",
+          clientId: authInfo?.clientId ?? null,
+          status: 200,
+        });
+        await recordAudit({
+          type: "mcp_status",
+          action: "Returned finance.list_providers",
+          success: true,
+          metadata: {
+            clientId: authInfo?.clientId ?? null,
+            providers: providers.map((provider) => provider.source),
+          },
+        });
+        return {
+          content: [{ type: "text", text: JSON.stringify({ providers }) }],
         };
       },
     );

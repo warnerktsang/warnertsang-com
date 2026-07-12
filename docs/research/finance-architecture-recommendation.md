@@ -9,7 +9,7 @@ Agent OS MCP
 ↓
 Finance service
 ↓
-Plaid
+Provider adapters
 ↓
 Institutions
 ```
@@ -19,7 +19,7 @@ This should be the default architecture for the first real finance phase.
 ## Why this is the right first move
 
 1. **It matches the locked product direction.** Claude is the interface; Agent OS is the authority layer.
-2. **It keeps the surface normalized.** Claude should see `finance.get_net_worth`, not `chase.get_transactions`.
+2. **It keeps the surface normalized.** Claude should see `finance.search_transactions`, not `chase.get_transactions`.
 3. **It supports read-only by construction.** The finance layer can expose only search / analyze / summarize tools.
 4. **It is compatible with nightly sync.** Live querying is unnecessary.
 5. **It scales to more institutions without changing the Claude surface.**
@@ -34,9 +34,9 @@ This should be the default architecture for the first real finance phase.
 
 ## Detailed recommendation
 
-### Primary choice: unified aggregator
+### Primary choice: normalized finance service with provider adapters
 
-Use one aggregator as the source of truth for:
+Use a normalized core as the source of truth for:
 
 - balances
 - transactions
@@ -45,33 +45,25 @@ Use one aggregator as the source of truth for:
 - derived net worth
 - historical rollups
 
-Then store normalized rows in your own database and compute summaries yourself.
+Then add provider adapters underneath it:
+
+- Chase for credit-card spending data first
+- Wealthfront for brokerage / managed-investing data
+- Schwab, Robinhood, AmEx, Capital One, Coinbase later
+
+The adapter boundary is where vendor-specific auth, session renewal, and coverage quirks belong.
 
 ### Secondary / supplemental integrations
 
-Add direct vendor APIs only where they materially improve coverage or fidelity:
+Use aggregators where they materially improve coverage or fidelity:
 
-- Coinbase for crypto-specific data
-- possibly Wealthfront if you need first-party Wealthfront account details
+- Plaid for broad read coverage
+- Monarch only as a fallback consumer surface, not the canonical data layer
+- direct vendor APIs if a provider offers a better official path
 
-But do not make them the core architecture.
+## Why not provider-specific tool names
 
-## Why not Wealthfront-centric
-
-Wealthfront is a single institution, not a universal data fabric.
-
-That makes it unsuitable as the backbone for a personal finance layer that needs:
-
-- Chase
-- AmEx
-- Capital One
-- Schwab
-- Robinhood
-- Coinbase
-
-## Why not direct integrations
-
-The direct-integration route loses on almost every axis:
+The direct-vendor route loses on almost every axis once you need more than one institution:
 
 - each institution has different auth
 - access is often partner-gated
@@ -85,8 +77,8 @@ Ship the first finance phase as:
 
 - Claude custom connector → Agent OS MCP
 - normalized finance service
-- Plaid-backed ingestion
+- provider adapters
 - nightly sync
 - read-only Claude tools only
 
-That is the simplest architecture that still supports the long-term normalized personal data layer.
+Start with Chase credit-card spending because that is your first concrete use case, but keep the adapter contract generic so Wealthfront, Schwab, Robinhood, AmEx, Capital One, and Coinbase can plug in later without changing the Claude surface.

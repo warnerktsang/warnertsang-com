@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
-import { parseWealthfrontQfx } from "@/lib/wealthfront/qfx";
-import { importWealthfrontQfx } from "@/lib/mcp/wealthfront";
+import { parseOfxStatement } from "@/lib/finance/ofx";
+import { listFinanceProviders } from "@/lib/finance/providers";
+import { importFinanceStatement } from "@/lib/mcp/finance";
 
 const sampleQfx = `OFXHEADER:100
 DATA:OFXSGML
@@ -104,25 +105,26 @@ NEWFILEUID:NONE
 </INVSTMTMSGSRSV1>
 </OFX>`;
 
-describe("Wealthfront QFX parsing", () => {
+describe("finance statement parsing", () => {
   it("normalizes bank and investment accounts", () => {
-    const parsed = parseWealthfrontQfx(sampleQfx);
+    const parsed = parseOfxStatement(sampleQfx, "chase");
 
-    expect(parsed.source).toBe("wealthfront");
+    expect(parsed.source).toBe("chase");
     expect(parsed.totals.accounts).toBe(2);
     expect(parsed.totals.transactions).toBe(2);
     expect(parsed.totals.holdings).toBe(1);
 
     const [bank, investment] = parsed.accounts;
-    expect(bank.source).toBe("bank");
+    expect(bank.source).toBe("chase");
     expect(bank.accountId).toBe("WF-001");
     expect(bank.transactions[0]?.amount).toBe(-12.34);
-    expect(investment.source).toBe("investment");
+    expect(investment.source).toBe("chase");
     expect(investment.holdings[0]?.symbol).toBe("VTI");
   });
 
   it("caps the tool response without changing the parsed totals", async () => {
-    const parsed = await importWealthfrontQfx({
+    const parsed = await importFinanceStatement({
+      source: "chase",
       content: sampleQfx,
       maxTransactionsPerAccount: 1,
     });
@@ -130,5 +132,12 @@ describe("Wealthfront QFX parsing", () => {
     expect(parsed.totals.transactions).toBe(2);
     expect(parsed.accounts[0]?.transactions).toHaveLength(1);
     expect(parsed.accounts[1]?.transactions).toHaveLength(1);
+  });
+
+  it("lists supported finance providers", () => {
+    const providers = listFinanceProviders();
+
+    expect(providers.some((provider) => provider.source === "chase")).toBe(true);
+    expect(providers.some((provider) => provider.source === "wealthfront")).toBe(true);
   });
 });
