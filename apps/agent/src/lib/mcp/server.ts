@@ -7,7 +7,9 @@ import {
   MCP_TOOL_GET_STATUS,
 } from "@/lib/mcp/constants";
 import {
+  chaseCookieImportSchema,
   financeImportSchema,
+  importChaseCookieExport,
   importFinanceStatement,
 } from "@/lib/mcp/finance";
 import { listFinanceProviders } from "@/lib/finance/providers";
@@ -64,6 +66,31 @@ export function createAgentOsMcpHandler() {
         logMcpEvent({
           event: "tool",
           tool: "finance.import_statement",
+          clientId: authInfo?.clientId ?? null,
+          status: 200,
+        });
+        return {
+          content: [
+            {
+              type: "text",
+              text: JSON.stringify(parsed),
+            },
+          ],
+        };
+      },
+    );
+
+    server.registerTool(
+      "finance.import_chase_cookie_export",
+      {
+        description: "Use an exported Chase cookie jar to import read-only credit card transactions.",
+        inputSchema: chaseCookieImportSchema,
+      },
+      async (input) => {
+        const parsed = await importChaseCookieExport(input);
+        logMcpEvent({
+          event: "tool",
+          tool: "finance.import_chase_cookie_export",
           clientId: authInfo?.clientId ?? null,
           status: 200,
         });

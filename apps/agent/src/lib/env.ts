@@ -25,6 +25,7 @@ const schema = z.object({
   OPENAI_API_KEY: z.string().optional(),
 
   MCP_BEARER_TOKEN: z.string().min(1).optional(),
+  CHASE_BROWSER_CDP_URL: z.string().url().optional(),
 });
 
 function loadEnv() {
