@@ -23,6 +23,8 @@ const schema = z.object({
   AGENT_MODEL_PROVIDER: z.string().default("openai"),
   AGENT_MODEL: z.string().default("gpt-4o-mini"),
   OPENAI_API_KEY: z.string().optional(),
+
+  MCP_BEARER_TOKEN: z.string().min(1).optional(),
 });
 
 function loadEnv() {
