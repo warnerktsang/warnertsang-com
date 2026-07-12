@@ -7,3 +7,4 @@ process.env.ALLOWED_GOOGLE_EMAIL ??= "test@example.com";
 process.env.AGENT_MODEL_PROVIDER ??= "openai";
 process.env.AGENT_MODEL ??= "gpt-4o-mini";
 process.env.OPENAI_API_KEY ??= "sk-test";
+process.env.MCP_BEARER_TOKEN ??= "test-mcp-token";

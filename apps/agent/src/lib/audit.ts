@@ -6,6 +6,10 @@ export type AuditType =
   | "login_denied"
   | "connector_access"
   | "tool_execution"
+  | "mcp_auth"
+  | "mcp_auth_denied"
+  | "mcp_authorization"
+  | "mcp_status"
   | "error";
 
 export interface AuditInput {
