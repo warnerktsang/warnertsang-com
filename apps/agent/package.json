@@ -17,6 +17,7 @@
   "dependencies": {
     "@ai-sdk/openai": "^4.0.8",
     "@ai-sdk/react": "^4.0.17",
+    "@modelcontextprotocol/server": "2.0.0-beta.3",
     "@prisma/client": "^6.19.3",
     "ai": "^7.0.16",
     "next": "16.2.10",
@@ -27,6 +28,7 @@
     "zod": "^4.4.3"
   },
   "devDependencies": {
+    "@rolldown/binding-linux-x64-gnu": "^1.1.5",
     "@tailwindcss/postcss": "^4",
     "@types/node": "^20",
     "@types/react": "^19",
