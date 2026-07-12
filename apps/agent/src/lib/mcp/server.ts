@@ -6,6 +6,10 @@ import {
   MCP_SERVER_VERSION,
   MCP_TOOL_GET_STATUS,
 } from "@/lib/mcp/constants";
+import {
+  importWealthfrontQfx,
+  wealthfrontImportSchema,
+} from "@/lib/mcp/wealthfront";
 import { getAgentStatus } from "@/lib/mcp/status";
 import { logMcpEvent } from "@/lib/mcp/log";
 
@@ -44,6 +48,31 @@ export function createAgentOsMcpHandler() {
         });
         return {
           content: [{ type: "text", text: JSON.stringify(status) }],
+        };
+      },
+    );
+
+    server.registerTool(
+      "wealthfront.import_qfx",
+      {
+        description: "Parse a Wealthfront Quicken export into normalized finance data.",
+        inputSchema: wealthfrontImportSchema,
+      },
+      async (input) => {
+        const parsed = await importWealthfrontQfx(input);
+        logMcpEvent({
+          event: "tool",
+          tool: "wealthfront.import_qfx",
+          clientId: authInfo?.clientId ?? null,
+          status: 200,
+        });
+        return {
+          content: [
+            {
+              type: "text",
+              text: JSON.stringify(parsed),
+            },
+          ],
         };
       },
     );
