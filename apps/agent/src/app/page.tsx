@@ -3,5 +3,5 @@ import { getCurrentUser } from "@/lib/auth-guard";
 
 export default async function Home() {
   const user = await getCurrentUser();
-  redirect(user ? "/chat" : "/login");
+  redirect(user ? "/admin" : "/login");
 }

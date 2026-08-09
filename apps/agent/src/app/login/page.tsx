@@ -8,7 +8,7 @@ export default async function LoginPage({
   searchParams: Promise<{ error?: string }>;
 }) {
   const user = await getCurrentUser();
-  if (user) redirect("/chat");
+  if (user) redirect("/admin");
 
   const { error } = await searchParams;
 

@@ -31,10 +31,10 @@ export default async function AdminPage() {
       <header className="flex items-center justify-between">
         <h1 className="text-xl font-semibold">Admin · Observability</h1>
         <Link
-          href="/chat"
+          href="/finance/connect"
           className="text-sm text-black/60 hover:underline dark:text-white/60"
         >
-          ← Back to chat
+          Finance connect →
         </Link>
       </header>
 

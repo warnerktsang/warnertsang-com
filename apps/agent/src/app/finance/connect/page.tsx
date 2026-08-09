@@ -15,10 +15,10 @@ export default async function FinanceConnectPage() {
           <h1 className="text-2xl font-semibold">Connect Chase</h1>
         </div>
         <Link
-          href="/chat"
+          href="/admin"
           className="text-sm text-black/60 hover:underline dark:text-white/60"
         >
-          Back to chat
+          Back to admin
         </Link>
       </header>
       <section className="space-y-4 rounded-2xl border border-black/10 p-5 dark:border-white/15">
