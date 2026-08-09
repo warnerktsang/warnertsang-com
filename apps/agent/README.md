@@ -1,11 +1,10 @@
 # agent — Personal Agent OS (Phase 1)
 
-A private, authenticated, **read-only** chat assistant that answers questions
-about your Google Calendar. This is Phase 1 of a longer-term "Personal Agent OS":
-one agent interface over your personal systems. It is intentionally scoped to a
-single connector (Google Calendar, read-only) while establishing the
-foundational architecture — auth, OAuth, a connector framework, a tool
-execution layer, audit logging, and persistence — that later phases build on.
+A private, authenticated, **read-only** MCP backend over your personal data
+(Google Calendar, Gmail, finance). This is Phase 1 of a longer-term "Personal
+Agent OS": one agent interface over your personal systems. The chat interface
+is Claude (via Claude connectors / MCP); this app provides auth, OAuth, a
+connector framework, a tool execution layer, audit logging, and persistence.
 
 > Phase 1 is strictly read-only. There are no write scopes and no write
 > functionality anywhere in the app.
@@ -14,9 +13,8 @@ execution layer, audit logging, and persistence — that later phases build on.
 
 - Google sign-in, restricted to a single allowlisted account (server-side).
 - Connects to Google Calendar using only `calendar.readonly`.
-- A chat interface (streaming) that uses a `google_calendar.read_events` tool to
-  answer questions like "What's on my calendar tomorrow?".
-- Persists conversations (threads + messages).
+- Exposes connector tools (e.g. `google_calendar.read_events`) to Claude over
+  MCP; Claude is the chat interface.
 - Logs every tool execution and access event to an audit trail.
 - A minimal admin page for observability (tool calls, audit events, connector
   status).
@@ -26,16 +24,10 @@ execution layer, audit logging, and persistence — that later phases build on.
 ## Architecture
 
 ```
-Browser (chat UI, useChat)
-      │  POST /api/chat  { threadId, messages }
+Claude (chat interface, via MCP connector)
+      │  /api/mcp  (bearer auth, fail closed)
       ▼
-Route handler  ── auth guard (allowlist, fail closed)
-      │
-      ▼
-Agent runtime (Vercel AI SDK, streamText)
-      │  model-agnostic: getAgentModel() picks the provider
-      ▼
-Tools built from the ConnectorRegistry
+MCP server ── tools from the ConnectorRegistry
       │
       ▼
 ToolExecutor  ── writes tool_calls + audit_events (fail closed)
@@ -53,16 +45,14 @@ Key modules:
 | `src/connectors/executor.ts` | `ToolExecutor` — validates input, runs the tool, records `tool_calls` + audit, fail-closed. |
 | `src/connectors/token-store.ts` | `TokenStore` abstraction over OAuth token persistence (see Security). |
 | `src/connectors/google/*` | Google Calendar connector, token refresh, read-only REST client. |
-| `src/agent/model.ts` | Model-provider abstraction (swappable; OpenAI by default). |
-| `src/agent/runtime.ts` | Builds AI SDK tools from the registry + the system prompt. |
+| `src/lib/mcp/*` | MCP server: bearer auth, tool handlers, status. |
 | `src/lib/auth.ts` | Auth.js (NextAuth v5) config: Google provider, allowlist, token capture. |
 | `src/lib/audit.ts` | Audit trail writer + metadata sanitizer (never logs secrets). |
-| `src/lib/threads.ts` | Chat thread/message persistence. |
-| `src/app/*` | Login, chat, admin pages and API route handlers. |
+| `src/app/*` | Login, admin, and finance pages and API route handlers. |
 
 Adding a future connector = implement the `Connector` interface and
-`registry.register(...)` it. The agent runtime, chat route, executor, and audit
-layer need no changes.
+`registry.register(...)` it. The MCP server, executor, and audit layer need no
+changes.
 
 ## Environment variables
 
@@ -76,9 +66,6 @@ See `.env.example`. All are validated at startup by `src/lib/env.ts`.
 | `GOOGLE_CLIENT_ID` | yes | Google OAuth client ID. |
 | `GOOGLE_CLIENT_SECRET` | yes | Google OAuth client secret. |
 | `ALLOWED_GOOGLE_EMAIL` | yes | The only Google account allowed to sign in. |
-| `AGENT_MODEL_PROVIDER` | no (default `openai`) | Model provider key. |
-| `AGENT_MODEL` | no (default `gpt-4o-mini`) | Model name. |
-| `OPENAI_API_KEY` | for OpenAI | API key for the chosen provider. |
 | `PLAID_ENV` | finance | `production` or `sandbox`; use `production` for the real Chase path. |
 | `PLAID_CLIENT_ID` | finance | Plaid Production client ID. |
 | `PLAID_SECRET` | finance | Plaid Production secret. |
@@ -93,8 +80,7 @@ refreshes are intentionally deferred until this real-data path is validated.
 
 ## Local development
 
-Prereqs: Node 22+, Docker (for local Postgres), a Google OAuth client, and a
-model provider API key.
+Prereqs: Node 22+, Docker (for local Postgres), and a Google OAuth client.
 
 1. **Install**
    ```sh
@@ -112,7 +98,7 @@ model provider API key.
 3. **Configure env**
    ```sh
    cp .env.example .env
-   # fill in GOOGLE_CLIENT_ID/SECRET, ALLOWED_GOOGLE_EMAIL, OPENAI_API_KEY
+   # fill in GOOGLE_CLIENT_ID/SECRET, ALLOWED_GOOGLE_EMAIL
    # generate AUTH_SECRET:
    npx auth secret
    ```
@@ -148,8 +134,7 @@ Deploy as a **separate Vercel project** from the same repo:
 3. Framework preset: **Next.js** (auto-detected).
 4. Add environment variables (Production + Preview): `DATABASE_URL`,
    `AUTH_SECRET`, `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`,
-   `ALLOWED_GOOGLE_EMAIL`, `AGENT_MODEL_PROVIDER`, `AGENT_MODEL`,
-   `OPENAI_API_KEY`. For the finance slice, also add `PLAID_ENV`,
+   `ALLOWED_GOOGLE_EMAIL`. For the finance slice, also add `PLAID_ENV`,
    `PLAID_CLIENT_ID`, `PLAID_SECRET`, and `FINANCE_ENCRYPTION_KEY`.
    (`AUTH_URL` only for a custom domain.)
    - Use a hosted Postgres (e.g. Neon or Vercel Postgres) for `DATABASE_URL`.
@@ -197,13 +182,10 @@ database implicitly; run `db:migrate:deploy` explicitly.
 - Refresh tokens are stored unencrypted (behind `TokenStore`).
 - Google OAuth app runs in "testing" mode (test users only) unless verified.
 - Single-user by design (allowlist of one).
-- Chat titles are derived naively from the first message.
 
 ## Recommended next steps (Phase 2)
 
 - Encrypt token storage (implement an encrypted `TokenStore`).
 - Add connectors (Gmail, Drive, etc.) — the framework already supports it.
 - Per-connector connect/disconnect UX and granular scopes.
-- Streaming tool-progress UI and richer message rendering.
 - Rate limiting and per-tool authorization policies.
-- Swap/mix model providers via `AGENT_MODEL_PROVIDER` (add Anthropic, etc.).

@@ -20,10 +20,6 @@ const schema = z.object({
     .string()
     .email("ALLOWED_GOOGLE_EMAIL must be a valid email"),
 
-  AGENT_MODEL_PROVIDER: z.string().default("openai"),
-  AGENT_MODEL: z.string().default("gpt-4o-mini"),
-  OPENAI_API_KEY: z.string().optional(),
-
   MCP_BEARER_TOKEN: z.string().min(1).optional(),
   PLAID_ENV: z.enum(["production", "sandbox"]).default("production"),
   PLAID_CLIENT_ID: z.string().min(1).optional(),
