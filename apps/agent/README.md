@@ -20,6 +20,8 @@ execution layer, audit logging, and persistence — that later phases build on.
 - Logs every tool execution and access event to an audit trail.
 - A minimal admin page for observability (tool calls, audit events, connector
   status).
+- A protected Plaid connection page and manual posted-transaction sync for the
+  first finance ingestion slice.
 
 ## Architecture
 
@@ -77,6 +79,17 @@ See `.env.example`. All are validated at startup by `src/lib/env.ts`.
 | `AGENT_MODEL_PROVIDER` | no (default `openai`) | Model provider key. |
 | `AGENT_MODEL` | no (default `gpt-4o-mini`) | Model name. |
 | `OPENAI_API_KEY` | for OpenAI | API key for the chosen provider. |
+| `PLAID_ENV` | finance | `production` or `sandbox`; use `production` for the real Chase path. |
+| `PLAID_CLIENT_ID` | finance | Plaid Production client ID. |
+| `PLAID_SECRET` | finance | Plaid Production secret. |
+| `FINANCE_ENCRYPTION_KEY` | finance | 64-character hex value from `openssl rand -hex 32`; encrypts Plaid access tokens at rest. |
+
+Finance setup is server-only. After deploying with the finance variables,
+sign in and open `/finance/connect`. Plaid Link handles Chase authentication;
+the browser receives only a short-lived Link token, while the exchanged
+long-lived access token is encrypted before storage in Neon. The page includes a
+manual date-range sync for posted transactions. MCP query tools and scheduled
+refreshes are intentionally deferred until this real-data path is validated.
 
 ## Local development
 
@@ -136,7 +149,9 @@ Deploy as a **separate Vercel project** from the same repo:
 4. Add environment variables (Production + Preview): `DATABASE_URL`,
    `AUTH_SECRET`, `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`,
    `ALLOWED_GOOGLE_EMAIL`, `AGENT_MODEL_PROVIDER`, `AGENT_MODEL`,
-   `OPENAI_API_KEY`. (`AUTH_URL` only for a custom domain.)
+   `OPENAI_API_KEY`. For the finance slice, also add `PLAID_ENV`,
+   `PLAID_CLIENT_ID`, `PLAID_SECRET`, and `FINANCE_ENCRYPTION_KEY`.
+   (`AUTH_URL` only for a custom domain.)
    - Use a hosted Postgres (e.g. Neon or Vercel Postgres) for `DATABASE_URL`.
 5. **Deploy.** Then add the production callback URL to the Google OAuth client:
    `https://<your-domain>/api/auth/callback/google`.
@@ -171,6 +186,10 @@ database implicitly; run `db:migrate:deploy` explicitly.
   through the `TokenStore` abstraction so this can be replaced with an encrypted
   store (KMS envelope encryption / secrets manager) without touching callers.
   See "Next steps".
+- **Finance token storage.** Plaid access tokens are encrypted with
+  `FINANCE_ENCRYPTION_KEY` before they are written to `finance_connections`.
+  Plaid credentials and access tokens never go to the client, Claude, audit
+  metadata, or logs.
 
 ## Known limitations
 

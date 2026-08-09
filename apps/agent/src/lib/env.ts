@@ -25,6 +25,13 @@ const schema = z.object({
   OPENAI_API_KEY: z.string().optional(),
 
   MCP_BEARER_TOKEN: z.string().min(1).optional(),
+  PLAID_ENV: z.enum(["production", "sandbox"]).default("production"),
+  PLAID_CLIENT_ID: z.string().min(1).optional(),
+  PLAID_SECRET: z.string().min(1).optional(),
+  FINANCE_ENCRYPTION_KEY: z
+    .string()
+    .regex(/^[0-9a-fA-F]{64}$/, "FINANCE_ENCRYPTION_KEY must be 32-byte hex")
+    .optional(),
 });
 
 function loadEnv() {

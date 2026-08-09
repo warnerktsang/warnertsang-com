@@ -19,10 +19,12 @@ model User {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  oauthAccounts OAuthAccount[]
-  threads       ChatThread[]
-  toolCalls     ToolCall[]
-  auditEvents   AuditEvent[]
+  oauthAccounts      OAuthAccount[]
+  threads            ChatThread[]
+  toolCalls          ToolCall[]
+  auditEvents        AuditEvent[]
+  financeConnections FinanceConnection[]
+  financeSyncRuns    FinanceSyncRun[]
 
   @@map("users")
 }
@@ -136,4 +138,99 @@ model AuditEvent {
   @@index([userId])
   @@index([createdAt])
   @@map("audit_events")
+}
+
+model FinanceConnection {
+  id                   String    @id @default(cuid())
+  userId               String
+  provider             String
+  itemId               String
+  encryptedAccessToken String
+  institutionId        String?
+  institutionName      String?
+  status               String    @default("connected")
+  lastSyncedAt         DateTime?
+  lastError            String?
+  createdAt            DateTime  @default(now())
+  updatedAt            DateTime  @updatedAt
+
+  user     User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  accounts FinanceAccount[]
+  syncRuns FinanceSyncRun[]
+
+  @@unique([userId, provider])
+  @@unique([provider, itemId])
+  @@index([userId])
+  @@map("finance_connections")
+}
+
+model FinanceAccount {
+  id                String   @id @default(cuid())
+  connectionId      String
+  providerAccountId String
+  name              String
+  officialName      String?
+  mask              String?
+  type              String
+  subtype           String?
+  isoCurrencyCode   String?
+  currentBalance    Decimal?
+  availableBalance  Decimal?
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  connection   FinanceConnection    @relation(fields: [connectionId], references: [id], onDelete: Cascade)
+  transactions FinanceTransaction[]
+
+  @@unique([connectionId, providerAccountId])
+  @@index([connectionId])
+  @@map("finance_accounts")
+}
+
+model FinanceTransaction {
+  id                    String    @id @default(cuid())
+  accountId             String
+  providerTransactionId String
+  pendingTransactionId  String?
+  name                  String
+  merchantName          String?
+  originalDescription   String?
+  amount                Decimal
+  isoCurrencyCode       String?
+  postedAt              DateTime
+  authorizedAt          DateTime?
+  pending               Boolean   @default(false)
+  paymentChannel        String?
+  category              String[]
+  createdAt             DateTime  @default(now())
+  updatedAt             DateTime  @updatedAt
+
+  account FinanceAccount @relation(fields: [accountId], references: [id], onDelete: Cascade)
+
+  @@unique([accountId, providerTransactionId])
+  @@index([accountId, postedAt])
+  @@index([postedAt])
+  @@map("finance_transactions")
+}
+
+model FinanceSyncRun {
+  id                String    @id @default(cuid())
+  userId            String
+  connectionId      String
+  provider          String
+  requestedStart    DateTime
+  requestedEnd      DateTime
+  status            String    @default("running")
+  transactionsSeen  Int       @default(0)
+  transactionsSaved Int       @default(0)
+  startedAt         DateTime  @default(now())
+  completedAt       DateTime?
+  error             String?
+
+  user       User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  connection FinanceConnection @relation(fields: [connectionId], references: [id], onDelete: Cascade)
+
+  @@index([userId, startedAt])
+  @@index([connectionId, startedAt])
+  @@map("finance_sync_runs")
 }
