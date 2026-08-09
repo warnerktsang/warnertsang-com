@@ -10,6 +10,11 @@ export type AuditType =
   | "mcp_auth_denied"
   | "mcp_authorization"
   | "mcp_status"
+  | "finance_link_token_error"
+  | "finance_connection"
+  | "finance_connection_error"
+  | "finance_sync"
+  | "finance_sync_error"
   | "error";
 
 export interface AuditInput {
