@@ -3,7 +3,7 @@ import { getCollection } from 'astro:content';
 import Layout from '../layouts/Layout.astro';
 
 const projects = (await getCollection('projects')).filter(
-	(project) => project.data.title === 'Reservations' || project.data.title === 'Fly Simulator',
+	(project) => project.data.title === 'Reservations',
 );
 
 const statusLabels = {
