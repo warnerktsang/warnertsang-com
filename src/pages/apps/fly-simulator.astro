@@ -1,0 +1,633 @@
+---
+import Layout from '../../layouts/Layout.astro';
+
+const title = 'Fly Simulator';
+const tagline = "He's a fly. He needs a big chest to fly.";
+---
+
+<Layout title={`${title} — Warner Tsang`}>
+	<main class="sim-shell">
+		<header class="sim-header">
+			<a class="back-link" href="/" aria-label="Back to Warner Tsang home">← Warner Tsang</a>
+			<h1>{title}</h1>
+			<p class="tagline">{tagline}</p>
+			<p class="disclosure">
+				A reduced, connectome-inspired toy model: <strong>218 spiking neurons</strong> running live
+				in your browser. Inspired by the FlyWire adult fruit-fly brain map (~140,000 neurons and
+				tens of millions of synapses) — this is <em>not</em> the real connectome, just a tiny
+				sensory → brain → muscle circuit that learns chest flies from dopamine.
+			</p>
+		</header>
+
+		<div class="split">
+			<section class="stage" aria-label="3D view: the fly training">
+				<canvas id="scene" role="img" aria-label="3D fruit fly seated on a bench, moving its arms through chest-fly repetitions driven by its simulated motor neurons"></canvas>
+				<div class="da-flash" id="daFlash" aria-hidden="true">dopamine</div>
+				<p class="stage-caption">Live: arm position is driven by motor-neuron firing rates, not keyframes.</p>
+			</section>
+
+			<section class="dash" aria-label="Neural dashboard">
+				<dl class="stats">
+					<div class="stat">
+						<dt>Reps</dt>
+						<dd id="statReps">0</dd>
+					</div>
+					<div class="stat">
+						<dt>Sets</dt>
+						<dd id="statSets">0</dd>
+					</div>
+					<div class="stat">
+						<dt>Form score</dt>
+						<dd id="statScore">–</dd>
+					</div>
+					<div class="stat">
+						<dt>Dopamine hits</dt>
+						<dd id="statDa">0</dd>
+					</div>
+					<div class="stat">
+						<dt>Learning Δw</dt>
+						<dd id="statLearn">0.00</dd>
+					</div>
+					<div class="stat">
+						<dt>Fly</dt>
+						<dd id="statSeed">–</dd>
+					</div>
+				</dl>
+
+				<div class="panel">
+					<h2>Spike raster</h2>
+					<canvas id="raster" width="480" height="240" role="img" aria-label="Scrolling spike raster: rows are neurons grouped by pool, columns are time"></canvas>
+					<ul class="legend" aria-label="Neuron pool colors">
+						<li><span class="sw" style="background:#4cc9c0"></span>sensory</li>
+						<li><span class="sw" style="background:#f0a35e"></span>CPG rhythm</li>
+						<li><span class="sw" style="background:#b48ce8"></span>reservoir</li>
+						<li><span class="sw" style="background:#7ed081"></span>motor</li>
+						<li><span class="sw" style="background:#ffd23f"></span>dopamine</li>
+					</ul>
+				</div>
+
+				<div class="panel">
+					<h2>Motor pools</h2>
+					<ul class="motors" aria-label="Motor neuron firing rates">
+						<li><span>L adduct</span><div class="bar"><i id="mLadd"></i></div></li>
+						<li><span>L abduct</span><div class="bar"><i id="mLabd"></i></div></li>
+						<li><span>R adduct</span><div class="bar"><i id="mRadd"></i></div></li>
+						<li><span>R abduct</span><div class="bar"><i id="mRabd"></i></div></li>
+					</ul>
+				</div>
+
+				<div class="panel">
+					<h2>Form score trend</h2>
+					<canvas id="spark" width="480" height="90" role="img" aria-label="Form score per repetition over the session"></canvas>
+				</div>
+
+				<div class="controls">
+					<button type="button" id="btnPause" aria-pressed="false">Pause</button>
+					<button type="button" id="btnTreat" title="Deliver a manual dopamine burst">⚡ Dopamine treat</button>
+					<button type="button" id="btnReset">New fly</button>
+				</div>
+
+				<p class="how">
+					How the teaching works: proprioceptive neurons report arm position to a central-pattern-generator
+					rhythm circuit and an interneuron reservoir. Two motor pools per arm pull toward <em>adduction</em>
+					(hands together) and <em>abduction</em> (arms wide). Every completed rep is scored on range of
+					motion, symmetry, and smoothness — good reps trigger dopamine, which strengthens the pathways
+					that fired through reward-modulated plasticity. Watch Δw climb as the fly's form improves.
+				</p>
+			</section>
+		</div>
+	</main>
+</Layout>
+
+<script is:inline src="/fly-sim/app.js"></script>
+<script type="importmap">
+{ "imports": { "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js" } }
+</script>
+<script type="module">
+import * as THREE from 'three';
+
+/* ---------- brain ---------- */
+const api = globalThis.__FlyBrainCore;
+let seedLabel = String((Date.now() % 100000) | 0);
+const brain = api.createBrain(parseInt(seedLabel, 10));
+
+/* ---------- 3D scene ---------- */
+const canvas = document.getElementById('scene');
+const renderer = new THREE.WebGLRenderer({ canvas, alpha: true, antialias: true });
+renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+const scene = new THREE.Scene();
+scene.fog = new THREE.Fog(0x101014, 7, 16);
+const camera = new THREE.PerspectiveCamera(38, 1.5, 0.1, 50);
+camera.position.set(0.7, 1.7, 4.6);
+camera.lookAt(0, 0.75, 0);
+
+scene.add(new THREE.HemisphereLight(0xfff4e0, 0x1a1c22, 0.9));
+const key = new THREE.DirectionalLight(0xffffff, 1.6);
+key.position.set(2.5, 4, 3);
+scene.add(key);
+const rim = new THREE.DirectionalLight(0x88aaff, 0.5);
+rim.position.set(-3, 2, -2);
+scene.add(rim);
+
+const bodyMat = new THREE.MeshStandardMaterial({ color: 0xc98f4e, roughness: 0.55 });
+const darkMat = new THREE.MeshStandardMaterial({ color: 0x7c4f24, roughness: 0.65 });
+const eyeMat = new THREE.MeshStandardMaterial({ color: 0xb03030, roughness: 0.2, metalness: 0.15 });
+const wingMat = new THREE.MeshStandardMaterial({ color: 0xdfe8ff, transparent: true, opacity: 0.32, side: THREE.DoubleSide, depthWrite: false });
+const benchMat = new THREE.MeshStandardMaterial({ color: 0x2b2724, roughness: 0.85 });
+const bellMat = new THREE.MeshStandardMaterial({ color: 0x3d3d45, roughness: 0.35, metalness: 0.7 });
+const floorMat = new THREE.MeshStandardMaterial({ color: 0x14161b, roughness: 1 });
+const brainMat = new THREE.MeshStandardMaterial({ color: 0xffd23f, emissive: 0xffb400, emissiveIntensity: 0.4, roughness: 0.4 });
+
+function limb(a, b, r, mat) {
+	const d = new THREE.Vector3().subVectors(b, a);
+	const len = d.length();
+	const m = new THREE.Mesh(new THREE.CylinderGeometry(r, r * 0.85, len, 10), mat);
+	m.position.copy(a).addScaledVector(d, 0.5);
+	m.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), d.clone().normalize());
+	return m;
+}
+
+/* floor */
+const floor = new THREE.Mesh(new THREE.CircleGeometry(7, 48), floorMat);
+floor.rotation.x = -Math.PI / 2;
+floor.position.y = -0.78;
+scene.add(floor);
+
+/* bench */
+const bench = new THREE.Group();
+const seat = new THREE.Mesh(new THREE.BoxGeometry(1.7, 0.14, 0.75), benchMat);
+seat.position.y = -0.07;
+bench.add(seat);
+const back = new THREE.Mesh(new THREE.BoxGeometry(1.7, 0.9, 0.12), benchMat);
+back.position.set(0, 0.32, -0.42);
+back.rotation.x = 0.12;
+bench.add(back);
+for (const [lx, lz] of [[-0.75, 0.28], [0.75, 0.28], [-0.75, -0.28], [0.75, -0.28]]) {
+	const leg = new THREE.Mesh(new THREE.CylinderGeometry(0.045, 0.045, 0.72, 10), benchMat);
+	leg.position.set(lx, -0.5, lz);
+	bench.add(leg);
+}
+scene.add(bench);
+
+/* fly */
+const fly = new THREE.Group();
+scene.add(fly);
+
+const abdomen = new THREE.Mesh(new THREE.SphereGeometry(0.34, 24, 18), bodyMat);
+abdomen.scale.set(0.85, 1.05, 1.25);
+abdomen.position.set(0, 0.42, -0.28);
+abdomen.rotation.x = 0.5;
+fly.add(abdomen);
+
+const thorax = new THREE.Mesh(new THREE.SphereGeometry(0.3, 24, 18), bodyMat);
+thorax.position.set(0, 0.72, 0.02);
+fly.add(thorax);
+
+/* fuzzy thorax stripes */
+for (let i = -1; i <= 1; i++) {
+	const stripe = new THREE.Mesh(new THREE.TorusGeometry(0.295, 0.018, 8, 32), darkMat);
+	stripe.position.set(0, 0.72 + i * 0.09, 0.02);
+	stripe.rotation.x = Math.PI / 2 - 0.25;
+	fly.add(stripe);
+}
+
+const head = new THREE.Mesh(new THREE.SphereGeometry(0.24, 24, 18), bodyMat);
+head.position.set(0, 1.12, 0.12);
+fly.add(head);
+
+for (const s of [-1, 1]) {
+	const eye = new THREE.Mesh(new THREE.SphereGeometry(0.115, 18, 14), eyeMat);
+	eye.position.set(s * 0.115, 1.16, 0.26);
+	eye.scale.set(0.8, 1.15, 0.8);
+	fly.add(eye);
+	const ant = limb(new THREE.Vector3(s * 0.05, 1.3, 0.28), new THREE.Vector3(s * 0.09, 1.44, 0.38), 0.014, darkMat);
+	fly.add(ant);
+}
+
+/* glowing brain inside the head */
+const brainMesh = new THREE.Mesh(new THREE.IcosahedronGeometry(0.085, 1), brainMat);
+brainMesh.position.set(0, 1.14, 0.1);
+fly.add(brainMesh);
+
+/* wings */
+const wings = [];
+for (const s of [-1, 1]) {
+	const w = new THREE.Mesh(new THREE.PlaneGeometry(0.52, 0.26), wingMat);
+	w.position.set(s * 0.2, 0.92, -0.3);
+	w.rotation.set(-0.5, s * 0.5, s * 0.35);
+	fly.add(w);
+	wings.push({ mesh: w, side: s, base: s * 0.35 });
+}
+
+/* seated legs (static, folded) */
+for (const s of [-1, 1]) {
+	const hip = new THREE.Vector3(s * 0.17, 0.22, 0.02);
+	const knee = new THREE.Vector3(s * 0.24, 0.02, 0.38);
+	const foot = new THREE.Vector3(s * 0.24, -0.74, 0.5);
+	fly.add(limb(hip, knee, 0.055, darkMat));
+	fly.add(limb(knee, foot, 0.04, darkMat));
+	const f = new THREE.Mesh(new THREE.SphereGeometry(0.05, 10, 8), darkMat);
+	f.position.copy(foot);
+	fly.add(f);
+}
+
+/* arms — the stars of the show */
+function makeArm(side) {
+	const shoulder = new THREE.Group();
+	shoulder.position.set(side * 0.33, 0.86, 0.1);
+
+	const upper = new THREE.Mesh(new THREE.CapsuleGeometry(0.062, 0.34, 6, 12), bodyMat);
+	upper.rotation.z = Math.PI / 2;
+	upper.position.x = side * 0.23;
+	shoulder.add(upper);
+	const delt = new THREE.Mesh(new THREE.SphereGeometry(0.085, 14, 12), darkMat);
+	shoulder.add(delt);
+
+	const elbow = new THREE.Group();
+	elbow.position.x = side * 0.46;
+	shoulder.add(elbow);
+
+	const fore = new THREE.Mesh(new THREE.CapsuleGeometry(0.05, 0.3, 6, 12), bodyMat);
+	fore.rotation.z = Math.PI / 2;
+	fore.position.x = side * 0.2;
+	elbow.add(fore);
+
+	const hand = new THREE.Group();
+	hand.position.x = side * 0.42;
+	elbow.add(hand);
+	const mitt = new THREE.Mesh(new THREE.SphereGeometry(0.07, 12, 10), darkMat);
+	hand.add(mitt);
+
+	/* dumbbell */
+	const handle = new THREE.Mesh(new THREE.CylinderGeometry(0.028, 0.028, 0.34, 10), bellMat);
+	handle.rotation.x = Math.PI / 2;
+	hand.add(handle);
+	for (const e of [-1, 1]) {
+		const plate = new THREE.Mesh(new THREE.BoxGeometry(0.07, 0.17, 0.17), bellMat);
+		plate.position.z = e * 0.19;
+		hand.add(plate);
+	}
+	fly.add(shoulder);
+	return { shoulder, elbow };
+}
+const armL = makeArm(-1);
+const armR = makeArm(1);
+
+const S_MIN = 0.12, S_MAX = 1.5;
+function elevFromSpread(s) {
+	const n = Math.min(1, Math.max(0, (s - S_MIN) / (S_MAX - S_MIN)));
+	return 0.12 + n * 1.33;
+}
+
+const daFlash = document.getElementById('daFlash');
+let flashT = 0;
+
+/* ---------- dashboard ---------- */
+const $ = (id) => document.getElementById(id);
+const statReps = $('statReps'), statSets = $('statSets'), statScore = $('statScore'),
+	statDa = $('statDa'), statLearn = $('statLearn'), statSeed = $('statSeed');
+statSeed.textContent = '#' + seedLabel;
+
+const POOL_COLORS = ['#4cc9c0', '#f0a35e', '#b48ce8', '#7ed081', '#ffd23f'];
+const rCan = $('raster'), rctx = rCan.getContext('2d');
+const RW = 220;
+const rcols = [];
+function pushRaster() {
+	rcols.push(brain.spikeSnapshot());
+	if (rcols.length > RW) rcols.shift();
+	const W = rCan.width, H = rCan.height, rh = H / 218;
+	rctx.fillStyle = '#0e1116';
+	rctx.fillRect(0, 0, W, H);
+	const cw = W / RW;
+	for (let c = 0; c < rcols.length; c++) {
+		const col = rcols[c];
+		for (let i = 0; i < 218; i++) {
+			if (col[i]) {
+				rctx.fillStyle = POOL_COLORS[brain.poolOf(i)];
+				rctx.fillRect(c * cw, i * rh, cw + 0.4, Math.max(1, rh));
+			}
+		}
+	}
+}
+
+const sCan = $('spark'), sctx = sCan.getContext('2d');
+function drawSpark() {
+	const W = sCan.width, H = sCan.height;
+	sctx.fillStyle = '#0e1116';
+	sctx.fillRect(0, 0, W, H);
+	const sc = brain.S.repScores;
+	if (sc.length < 2) return;
+	const data = sc.slice(-80);
+	sctx.strokeStyle = '#7ed081';
+	sctx.lineWidth = 2;
+	sctx.beginPath();
+	data.forEach((v, i) => {
+		const x = (i / (data.length - 1)) * W;
+		const y = H - Math.min(1, Math.max(0, v)) * (H - 8) - 4;
+		i ? sctx.lineTo(x, y) : sctx.moveTo(x, y);
+	});
+	sctx.stroke();
+}
+
+const bars = { Ladd: $('mLadd'), Labd: $('mLabd'), Radd: $('mRadd'), Rabd: $('mRabd') };
+function setBar(el, hz) {
+	el.style.width = Math.min(100, (hz / 60) * 100).toFixed(1) + '%';
+}
+
+/* ---------- controls ---------- */
+let paused = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+const btnPause = $('btnPause');
+function syncPause() {
+	btnPause.textContent = paused ? 'Resume' : 'Pause';
+	btnPause.setAttribute('aria-pressed', String(paused));
+}
+btnPause.addEventListener('click', () => { paused = !paused; syncPause(); });
+syncPause();
+
+$('btnTreat').addEventListener('click', () => {
+	brain.stimulate(1.0, Math.max(0.55, brain.S.lastScore || 0.7));
+	flashT = 1;
+});
+$('btnReset').addEventListener('click', () => {
+	seedLabel = String((Math.random() * 100000) | 0);
+	brain.reset(parseInt(seedLabel, 10));
+	rcols.length = 0;
+	statSeed.textContent = '#' + seedLabel;
+	flashT = 0;
+});
+
+/* ---------- resize ---------- */
+function fit() {
+	const w = canvas.clientWidth || 600, h = canvas.clientHeight || 400;
+	renderer.setSize(w, h, false);
+	camera.aspect = w / h;
+	camera.updateProjectionMatrix();
+}
+new ResizeObserver(fit).observe(canvas);
+window.addEventListener('resize', fit);
+fit();
+
+/* ---------- main loop ---------- */
+let last = performance.now(), acc = 0, dashT = 0;
+function frame(now) {
+	requestAnimationFrame(frame);
+	let dt = Math.min(0.1, (now - last) / 1000);
+	last = now;
+
+	if (!paused) {
+		acc += dt;
+		let n = Math.min(80, Math.floor(acc / 0.001));
+		acc -= n * 0.001;
+		for (let i = 0; i < n; i++) brain.step();
+	}
+
+	const S = brain.S;
+	const t = now / 1000;
+
+	/* arms from live neural state */
+	for (const [arm, s] of [[armL, S.s[0]], [armR, S.s[1]]]) {
+		const elev = elevFromSpread(s);
+		const side = arm === armL ? -1 : 1;
+		arm.shoulder.rotation.y = side * (-Math.PI / 2 + elev);
+		arm.shoulder.rotation.z = side * -0.1;
+		const openN = (s - S_MIN) / (S_MAX - S_MIN);
+		arm.elbow.rotation.y = -side * (0.55 - 0.25 * openN);
+	}
+	/* life */
+	for (const w of wings) w.mesh.rotation.z = w.base + Math.sin(t * 42 + w.side) * 0.28;
+	fly.position.y = 0.02 * Math.sin(t * 2.2);
+	fly.rotation.y = 0.06 * Math.sin(t * 0.5);
+
+	/* dopamine glow */
+	const daGlow = Math.min(2.2, S.daRate / 55);
+	brainMat.emissiveIntensity = 0.35 + daGlow * 1.6 + (flashT > 0 ? 1.2 : 0);
+	if (S.daRate > 25 || flashT > 0) {
+		flashT = Math.max(0, flashT - dt * 2);
+		daFlash.style.opacity = String(Math.min(1, Math.max(flashT, S.daRate / 90)));
+	} else {
+		daFlash.style.opacity = '0';
+	}
+
+	pushRaster();
+
+	/* dashboard text at ~6 Hz */
+	if (now - dashT > 160) {
+		dashT = now;
+		statReps.textContent = S.reps;
+		statSets.textContent = S.sets;
+		statScore.textContent = S.lastScore ? S.lastScore.toFixed(2) : '–';
+		statDa.textContent = S.daEvents;
+		statLearn.textContent = brain.meanWDelta().toFixed(2);
+		setBar(bars.Ladd, S.rates[0]); setBar(bars.Labd, S.rates[1]);
+		setBar(bars.Radd, S.rates[2]); setBar(bars.Rabd, S.rates[3]);
+		drawSpark();
+	}
+
+	renderer.render(scene, camera);
+}
+requestAnimationFrame(frame);
+</script>
+
+<style>
+	.sim-shell {
+		width: min(1280px, calc(100% - 32px));
+		margin: 0 auto;
+		padding: 28px 0 64px;
+	}
+	.back-link {
+		font-size: 14px;
+		text-decoration: none;
+		color: #6f6248;
+	}
+	.sim-header h1 {
+		font-size: clamp(34px, 6vw, 64px);
+		margin: 10px 0 4px;
+		letter-spacing: -0.01em;
+	}
+	.tagline {
+		font-size: 18px;
+		color: #4c4740;
+		margin: 0 0 14px;
+		font-style: italic;
+	}
+	.disclosure {
+		max-width: 78ch;
+		font-size: 14px;
+		line-height: 1.6;
+		color: #5c564c;
+		background: #f4f0e6;
+		border: 1px solid #e2dccb;
+		border-radius: 8px;
+		padding: 12px 14px;
+		margin: 0 0 22px;
+	}
+	.split {
+		display: grid;
+		grid-template-columns: minmax(0, 7fr) minmax(300px, 5fr);
+		gap: 18px;
+		align-items: start;
+	}
+	.stage {
+		position: relative;
+		background: radial-gradient(120% 100% at 50% 0%, #1b1e26 0%, #101014 70%);
+		border-radius: 12px;
+		overflow: hidden;
+		border: 1px solid #26262e;
+	}
+	#scene {
+		display: block;
+		width: 100%;
+		height: min(66vh, 560px);
+	}
+	.da-flash {
+		position: absolute;
+		top: 14px;
+		left: 50%;
+		transform: translateX(-50%);
+		background: rgba(255, 210, 63, 0.16);
+		border: 1px solid #ffd23f;
+		color: #ffd23f;
+		font-size: 12px;
+		letter-spacing: 0.18em;
+		text-transform: uppercase;
+		padding: 6px 14px;
+		border-radius: 999px;
+		opacity: 0;
+		transition: opacity 0.12s;
+		pointer-events: none;
+	}
+	.stage-caption {
+		margin: 0;
+		padding: 10px 14px 12px;
+		font-size: 12.5px;
+		color: #8b8b96;
+	}
+	.dash {
+		display: grid;
+		gap: 14px;
+	}
+	.stats {
+		display: grid;
+		grid-template-columns: repeat(3, 1fr);
+		gap: 10px;
+		margin: 0;
+	}
+	.stat {
+		background: #fffdfa;
+		border: 1px solid #d9d6cd;
+		border-radius: 8px;
+		padding: 10px 12px;
+	}
+	.stat dt {
+		font-size: 11px;
+		text-transform: uppercase;
+		letter-spacing: 0.08em;
+		color: #8a8478;
+	}
+	.stat dd {
+		margin: 4px 0 0;
+		font-size: 24px;
+		font-weight: 700;
+		font-variant-numeric: tabular-nums;
+	}
+	.panel {
+		background: #fffdfa;
+		border: 1px solid #d9d6cd;
+		border-radius: 8px;
+		padding: 12px 14px;
+	}
+	.panel h2 {
+		font-size: 13px;
+		text-transform: uppercase;
+		letter-spacing: 0.08em;
+		color: #8a8478;
+		margin: 0 0 8px;
+	}
+	#raster, #spark {
+		display: block;
+		width: 100%;
+		border-radius: 6px;
+	}
+	#raster { height: 200px; }
+	#spark { height: 90px; }
+	.legend {
+		display: flex;
+		flex-wrap: wrap;
+		gap: 10px;
+		list-style: none;
+		margin: 8px 0 0;
+		padding: 0;
+		font-size: 12px;
+		color: #5c564c;
+	}
+	.legend .sw {
+		display: inline-block;
+		width: 10px;
+		height: 10px;
+		border-radius: 2px;
+		margin-right: 4px;
+		vertical-align: baseline;
+	}
+	.motors {
+		list-style: none;
+		margin: 0;
+		padding: 0;
+		display: grid;
+		gap: 8px;
+	}
+	.motors li {
+		display: grid;
+		grid-template-columns: 76px 1fr;
+		align-items: center;
+		gap: 10px;
+		font-size: 13px;
+		color: #4c4740;
+	}
+	.motors .bar {
+		height: 10px;
+		background: #efebe2;
+		border-radius: 999px;
+		overflow: hidden;
+	}
+	.motors .bar i {
+		display: block;
+		height: 100%;
+		width: 0;
+		background: linear-gradient(90deg, #7ed081, #4caf5d);
+		border-radius: 999px;
+		transition: width 0.12s;
+	}
+	.controls {
+		display: flex;
+		flex-wrap: wrap;
+		gap: 10px;
+	}
+	.controls button {
+		font: inherit;
+		font-size: 14px;
+		font-weight: 600;
+		padding: 10px 16px;
+		border-radius: 8px;
+		border: 1px solid #c7c2b8;
+		background: #fffdfa;
+		cursor: pointer;
+	}
+	.controls button:hover {
+		border-color: #8a8478;
+	}
+	#btnTreat {
+		background: #ffd23f;
+		border-color: #d9a800;
+	}
+	.how {
+		font-size: 13.5px;
+		line-height: 1.65;
+		color: #5c564c;
+		margin: 0;
+	}
+	@media (max-width: 900px) {
+		.split { grid-template-columns: 1fr; }
+		#scene { height: 52vh; }
+		.stats { grid-template-columns: repeat(2, 1fr); }
+	}
+</style>
