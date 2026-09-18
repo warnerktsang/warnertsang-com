@@ -97,17 +97,21 @@ const tagline = "He's a fly. He needs a big chest to fly.";
 			</section>
 		</div>
 	</main>
-</Layout>
 
-<script is:inline src="/fly-sim/app.js"></script>
-<script type="importmap">
-{ "imports": { "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js" } }
-</script>
-<script type="module">
+	<script is:inline src="/fly-sim/app.js"></script>
+	<script type="importmap">
+	{ "imports": { "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js" } }
+	</script>
+	<script type="module">
 import * as THREE from 'three';
+
+try {
 
 /* ---------- brain ---------- */
 const api = globalThis.__FlyBrainCore;
+if (!api || typeof api.createBrain !== 'function') {
+	throw new Error('neural core (app.js) did not load before the simulator module ran');
+}
 let seedLabel = String((Date.now() % 100000) | 0);
 const brain = api.createBrain(parseInt(seedLabel, 10));
 
@@ -426,7 +430,23 @@ function frame(now) {
 	renderer.render(scene, camera);
 }
 requestAnimationFrame(frame);
+
+} catch (err) {
+	console.error('[fly-sim] simulator failed to start:', err);
+	const panel = document.querySelector('.stage');
+	if (panel) {
+		const msg = document.createElement('p');
+		msg.className = 'sim-error';
+		msg.setAttribute('role', 'alert');
+		msg.textContent = 'The simulator could not start in this browser'
+			+ (err && err.message ? ': ' + err.message : '.') + ' Try a recent Chrome, Edge, Firefox, or Safari.';
+		panel.appendChild(msg);
+		const cap = panel.querySelector('.stage-caption');
+		if (cap) cap.hidden = true;
+	}
+}
 </script>
+</Layout>
 
 <style>
 	.sim-shell {
@@ -501,6 +521,14 @@ requestAnimationFrame(frame);
 		padding: 10px 14px 12px;
 		font-size: 12.5px;
 		color: #8b8b96;
+	}
+	.sim-error {
+		margin: 10px 14px 0;
+		padding: 12px 14px;
+		border-radius: 10px;
+		background: #fdecec;
+		color: #8f1d1d;
+		font-size: 0.9rem;
 	}
 	.dash {
 		display: grid;
