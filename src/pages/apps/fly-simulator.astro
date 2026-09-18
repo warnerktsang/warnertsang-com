@@ -444,6 +444,11 @@ requestAnimationFrame(frame);
 		const cap = panel.querySelector('.stage-caption');
 		if (cap) cap.hidden = true;
 	}
+	// The control buttons only work once the sim is running — disable them in the error state.
+	for (const id of ['btnPause', 'btnTreat', 'btnReset']) {
+		const b = document.getElementById(id);
+		if (b) b.disabled = true;
+	}
 }
 </script>
 </Layout>
